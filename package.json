@@ -1,0 +1,72 @@
+{
+  "name": "relay",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Relay is an async AI task agent platform that decouples HTTP intake, background workflows, and result delivery for observable long-running LLM jobs.",
+  "license": "MIT",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "worker": "tsx workflows/dev-worker.ts",
+    "lint": "next lint",
+    "format": "prettier --check .",
+    "format:write": "prettier --write .",
+    "typecheck": "tsc --noEmit",
+    "migrate": "tsx scripts/migrate.ts",
+    "seed": "tsx scripts/seed.ts",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "prepare": "husky"
+  },
+  "dependencies": {
+    "@hookform/resolvers": "3.9.0",
+    "@radix-ui/react-dialog": "1.1.2",
+    "@radix-ui/react-dropdown-menu": "2.1.2",
+    "@radix-ui/react-select": "2.1.2",
+    "@radix-ui/react-tabs": "1.1.1",
+    "clsx": "2.1.1",
+    "framer-motion": "11.11.17",
+    "lucide-react": "0.468.0",
+    "nanoid": "5.0.9",
+    "next": "14.2.35",
+    "pg": "8.13.1",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "react-hook-form": "7.53.2",
+    "server-only": "0.0.1",
+    "tailwind-merge": "2.5.5",
+    "zod": "3.24.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.49.1",
+    "@testing-library/jest-dom": "6.6.3",
+    "@testing-library/react": "16.1.0",
+    "@types/node": "22.10.2",
+    "@types/pg": "8.11.10",
+    "@types/react": "18.3.17",
+    "@types/react-dom": "18.3.5",
+    "@vitejs/plugin-react": "4.3.4",
+    "autoprefixer": "10.4.20",
+    "eslint": "8.57.1",
+    "eslint-config-next": "14.2.35",
+    "husky": "9.1.7",
+    "jsdom": "25.0.1",
+    "lint-staged": "15.2.10",
+    "msw": "2.6.8",
+    "postcss": "8.4.49",
+    "prettier": "3.4.2",
+    "tailwindcss": "3.4.17",
+    "tsx": "4.19.2",
+    "typescript": "5.7.2",
+    "vitest": "2.1.8"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx,json,md,css}": [
+      "prettier --write"
+    ],
+    "*.{ts,tsx}": [
+      "eslint --fix"
+    ]
+  }
+}
