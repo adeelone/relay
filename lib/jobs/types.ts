@@ -1,13 +1,20 @@
 import { z } from "zod";
 
-export const jobStatuses = ["queued", "processing", "retrying", "complete", "failed", "cancelled"] as const;
+export const jobStatuses = [
+  "queued",
+  "processing",
+  "retrying",
+  "complete",
+  "failed",
+  "cancelled",
+] as const;
 export type JobStatus = (typeof jobStatuses)[number];
 
 export const deliveryConfigSchema = z
   .object({
     inApp: z.boolean().default(true),
     webhookUrl: z.string().url().optional(),
-    email: z.string().email().optional()
+    email: z.string().email().optional(),
   })
   .partial()
   .default({ inApp: true });
@@ -25,6 +32,7 @@ export interface TaskContext {
   attempt: number;
   signal?: AbortSignal;
   emit: (event: JobEventInput) => Promise<void>;
+  checkCancelled: () => Promise<void>;
 }
 
 export interface JobEventInput {
@@ -73,4 +81,15 @@ export interface JobEventRecord {
   chunk?: string;
   metadata?: Record<string, unknown>;
   createdAt: string;
+}
+
+export interface WebhookDeliveryRecord {
+  id: string;
+  jobId: string;
+  target: "in-app" | "webhook" | "email";
+  status: string;
+  attempt: number;
+  responseStatus?: number;
+  createdAt: string;
+  deliveredAt?: string;
 }

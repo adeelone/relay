@@ -1,17 +1,17 @@
 # Relay
 
-Relay is an async AI task agent platform that keeps HTTP intake, background execution, and result delivery decoupled. The web layer validates a request, writes a queued job, enqueues a workflow, and returns a job ID immediately; all provider calls, retries, logging, and delivery run in replaceable worker code.
+Relay is an async AI task agent platform prototype that keeps HTTP intake, background execution, and result delivery separate. The web layer validates a request, records a queued job, schedules worker code, and returns a job ID immediately; provider calls, retries, event logging, and delivery live outside the request handler.
 
 ## Why This Shape
 
-Long-running LLM work should not block a request handler. Relay uses three layers: a thin Next.js API, a durable job store, and Render Workflows tasks. The dashboard exists to make that architecture visible: queue position, status events, attempts, cost, provider usage, and delivery state are all first-class data.
+Long-running LLM work should not block a request handler. Relay uses three layers: a thin Next.js API, a job/event store, and worker code behind a workflow boundary. The dashboard exists to make that architecture visible: queue position, status events, attempts, cost, provider usage, and delivery state are first-class data.
 
 ## Stack
 
 - Next.js 14 App Router with TypeScript strict for API routes and dashboard UI.
-- Render Workflows for production task execution; a fake in-process worker runs locally.
-- Render Postgres schema in `migrations/001_initial.sql`.
-- Server-Sent Events backed locally by an event bus, with Postgres `LISTEN/NOTIFY` or Redis intended for production scaling.
+- Render blueprint and workflow registration boundary; a fake in-process worker runs locally.
+- Render Postgres schema in `migrations/001_initial.sql`; the local adapter is still in-memory.
+- Server-Sent Events backed locally by an event bus; Postgres `LISTEN/NOTIFY` or Redis is still production follow-up work.
 - Groq is the default LLM provider. OpenAI, Anthropic, and mock providers share the same interface.
 - Zod validates every recipe input and output.
 

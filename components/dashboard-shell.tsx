@@ -19,9 +19,9 @@ import {
   Settings,
   ShieldCheck,
   Square,
-  Webhook
+  Webhook,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { DashboardSnapshot } from "@/lib/dashboard/snapshot";
 import type { JobStatus } from "@/lib/jobs/types";
 
@@ -30,7 +30,7 @@ const recipeIcons = {
   "meeting-notes": FileText,
   "research-digest": Search,
   "code-review": Code2,
-  "inbox-triage": Inbox
+  "inbox-triage": Inbox,
 };
 
 const statusColor: Record<JobStatus, string> = {
@@ -39,19 +39,109 @@ const statusColor: Record<JobStatus, string> = {
   retrying: "bg-orange-100 text-orange-900",
   complete: "bg-emerald-100 text-emerald-900",
   failed: "bg-red-100 text-red-900",
-  cancelled: "bg-graphite-200 text-graphite-700"
+  cancelled: "bg-graphite-200 text-graphite-700",
 };
 
 export function DashboardShell({ snapshot }: { snapshot: DashboardSnapshot }) {
-  const [selectedRecipe, setSelectedRecipe] = useState(snapshot.recipes[0]?.id ?? "");
-  const recipe = snapshot.recipes.find((item) => item.id === selectedRecipe) ?? snapshot.recipes[0];
-  const selectedJob = snapshot.jobs[0];
-  const queueTotal = snapshot.health.queued + snapshot.health.processing + snapshot.health.retrying;
+  const [selectedRecipe, setSelectedRecipe] = useState(
+    snapshot.recipes[0]?.id ?? "",
+  );
+  const [jobs, setJobs] = useState(snapshot.jobs);
+  const [liveJob, setLiveJob] = useState(snapshot.jobs[0]);
+  const recipe =
+    snapshot.recipes.find((item) => item.id === selectedRecipe) ??
+    snapshot.recipes[0];
+  const queueTotal =
+    snapshot.health.queued +
+    snapshot.health.processing +
+    snapshot.health.retrying;
 
   const sampleInput = useMemo(() => {
     if (!recipe) return "{}";
     return JSON.stringify(recipe.sampleInput, null, 2);
   }, [recipe]);
+  const [inputText, setInputText] = useState(sampleInput);
+
+  useEffect(() => {
+    setInputText(sampleInput);
+  }, [sampleInput]);
+
+  async function submitJob() {
+    if (!recipe) return;
+    const input = JSON.parse(inputText) as Record<string, unknown>;
+    const response = await fetch("/api/jobs", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        recipe: recipe.id,
+        input,
+        delivery: { inApp: true },
+      }),
+    });
+    if (!response.ok) {
+      throw new Error(`Job submission failed: ${response.status}`);
+    }
+    const payload = (await response.json()) as {
+      jobId: string;
+      status: JobStatus;
+      streamUrl: string;
+    };
+    const now = new Date().toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    const nextJob = {
+      id: payload.jobId,
+      recipeName: recipe.name,
+      status: payload.status,
+      durationMs: undefined,
+      costUsd: recipe.estimate.costUsd,
+      createdLabel: now,
+      timeline: [
+        {
+          status: "queued" as JobStatus,
+          at: new Date().toISOString(),
+          label: "Accepted by HTTP layer",
+        },
+      ],
+      outputPreview: "Queued event written.\nWaiting for worker events...",
+    };
+    setJobs((current) => [nextJob, ...current].slice(0, 8));
+    setLiveJob(nextJob);
+
+    const source = new EventSource(payload.streamUrl);
+    source.onmessage = (message) => {
+      const event = JSON.parse(message.data) as {
+        status?: JobStatus;
+        message: string;
+        chunk?: string;
+        createdAt: string;
+      };
+      setLiveJob((current) => {
+        const status = event.status ?? current.status;
+        return {
+          ...current,
+          status,
+          timeline: event.status
+            ? [
+                ...current.timeline,
+                { status, at: event.createdAt, label: event.message },
+              ]
+            : current.timeline,
+          outputPreview: event.chunk
+            ? `${current.outputPreview}\n${event.chunk}`
+            : current.outputPreview,
+        };
+      });
+      if (
+        event.status === "complete" ||
+        event.status === "failed" ||
+        event.status === "cancelled"
+      ) {
+        source.close();
+      }
+    };
+  }
 
   return (
     <main className="min-h-screen bg-graphite-50 text-graphite-900">
@@ -67,13 +157,15 @@ export function DashboardShell({ snapshot }: { snapshot: DashboardSnapshot }) {
             </div>
           </div>
           <nav className="space-y-1 text-sm">
-            {([
-              ["Submit", Send],
-              ["Jobs", Database],
-              ["Queue", Activity],
-              ["API Keys", KeyRound],
-              ["Settings", Settings]
-            ] satisfies Array<[string, typeof Send]>).map(([label, Icon]) => (
+            {(
+              [
+                ["Submit", Send],
+                ["Jobs", Database],
+                ["Queue", Activity],
+                ["API Keys", KeyRound],
+                ["Settings", Settings],
+              ] satisfies Array<[string, typeof Send]>
+            ).map(([label, Icon]) => (
               <button
                 key={String(label)}
                 className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-graphite-700 hover:bg-graphite-100"
@@ -89,7 +181,8 @@ export function DashboardShell({ snapshot }: { snapshot: DashboardSnapshot }) {
               Provider guard
             </div>
             <p className="mt-2 text-xs leading-5 text-graphite-500">
-              Groq is primary. OpenAI and Anthropic adapters are available when keys are set.
+              Groq is primary. OpenAI and Anthropic adapters are available when
+              keys are set.
             </p>
           </div>
         </aside>
@@ -99,7 +192,8 @@ export function DashboardShell({ snapshot }: { snapshot: DashboardSnapshot }) {
             <div>
               <h1 className="text-xl font-semibold">Operations dashboard</h1>
               <p className="text-sm text-graphite-500">
-                Submit jobs, watch workflow state, inspect attempts, and deliver results.
+                Submit jobs, watch workflow state, inspect attempts, and deliver
+                results.
               </p>
             </div>
             <div className="flex items-center gap-3 text-sm max-sm:w-full max-sm:justify-between">
@@ -119,13 +213,20 @@ export function DashboardShell({ snapshot }: { snapshot: DashboardSnapshot }) {
                 <div className="flex items-center justify-between gap-3 max-sm:flex-col max-sm:items-start">
                   <div>
                     <h2 className="text-base font-semibold">Submit a job</h2>
-                    <p className="text-sm text-graphite-500">The API returns immediately; workflow execution happens off-thread.</p>
+                    <p className="text-sm text-graphite-500">
+                      The API returns immediately; workflow execution happens
+                      off-thread.
+                    </p>
                   </div>
-                  <span className="rounded-md bg-graphite-100 px-3 py-1 text-xs text-graphite-700">p95 intake &lt; 200ms</span>
+                  <span className="rounded-md bg-graphite-100 px-3 py-1 text-xs text-graphite-700">
+                    p95 intake &lt; 200ms
+                  </span>
                 </div>
                 <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
                   {snapshot.recipes.map((item) => {
-                    const Icon = recipeIcons[item.id as keyof typeof recipeIcons] ?? FileText;
+                    const Icon =
+                      recipeIcons[item.id as keyof typeof recipeIcons] ??
+                      FileText;
                     return (
                       <button
                         key={item.id}
@@ -138,30 +239,44 @@ export function DashboardShell({ snapshot }: { snapshot: DashboardSnapshot }) {
                       >
                         <Icon className="mb-3 text-graphite-700" size={18} />
                         <div className="text-sm font-semibold">{item.name}</div>
-                        <div className="mt-1 line-clamp-2 text-xs leading-5 text-graphite-500">{item.description}</div>
+                        <div className="mt-1 line-clamp-2 text-xs leading-5 text-graphite-500">
+                          {item.description}
+                        </div>
                       </button>
                     );
                   })}
                 </div>
                 <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_260px]">
                   <label className="block">
-                    <span className="text-xs font-semibold uppercase text-graphite-500">Input payload</span>
+                    <span className="text-xs font-semibold uppercase text-graphite-500">
+                      Input payload
+                    </span>
                     <textarea
                       className="mt-2 h-56 w-full min-w-0 resize-none rounded-md border border-graphite-200 bg-graphite-50 p-3 font-mono text-xs leading-5 outline-none focus:border-teal-500"
-                      value={sampleInput}
-                      readOnly
+                      value={inputText}
+                      onChange={(event) => setInputText(event.target.value)}
                     />
                   </label>
                   <div className="rounded-md border border-graphite-200 bg-graphite-50 p-4">
-                    <div className="text-xs font-semibold uppercase text-graphite-500">Estimate</div>
-                    <div className="mt-2 text-3xl font-semibold">${recipe?.estimate.costUsd.toFixed(4)}</div>
-                    <div className="mt-1 text-sm text-graphite-500">{recipe?.estimate.tokens.toLocaleString()} tokens</div>
-                    <button className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-md bg-graphite-900 px-4 py-2.5 text-sm font-semibold text-white">
+                    <div className="text-xs font-semibold uppercase text-graphite-500">
+                      Estimate
+                    </div>
+                    <div className="mt-2 text-3xl font-semibold">
+                      ${recipe?.estimate.costUsd.toFixed(4)}
+                    </div>
+                    <div className="mt-1 text-sm text-graphite-500">
+                      {recipe?.estimate.tokens.toLocaleString()} tokens
+                    </div>
+                    <button
+                      onClick={() => void submitJob()}
+                      className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-md bg-graphite-900 px-4 py-2.5 text-sm font-semibold text-white"
+                    >
                       <Play size={15} />
                       Submit
                     </button>
                     <p className="mt-3 text-xs leading-5 text-graphite-500">
-                      A returned job ID includes poll and stream URLs for fallback and live views.
+                      A returned job ID includes poll and stream URLs for
+                      fallback and live views.
                     </p>
                   </div>
                 </div>
@@ -190,20 +305,37 @@ export function DashboardShell({ snapshot }: { snapshot: DashboardSnapshot }) {
                         <th className="py-3 font-semibold">Status</th>
                         <th className="py-3 font-semibold">Duration</th>
                         <th className="py-3 font-semibold">Cost</th>
-                        <th className="hidden py-3 font-semibold 2xl:table-cell">Created</th>
+                        <th className="hidden py-3 font-semibold 2xl:table-cell">
+                          Created
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
-                      {snapshot.jobs.map((job) => (
-                        <tr key={job.id} className="border-b border-graphite-100">
-                          <td className="max-w-32 truncate py-3 font-mono text-xs">{job.id}</td>
+                      {jobs.map((job) => (
+                        <tr
+                          key={job.id}
+                          className="border-b border-graphite-100"
+                        >
+                          <td className="max-w-32 truncate py-3 font-mono text-xs">
+                            {job.id}
+                          </td>
                           <td className="py-3">{job.recipeName}</td>
                           <td className="py-3">
-                            <span className={`rounded-md px-2 py-1 text-xs font-semibold ${statusColor[job.status]}`}>{job.status}</span>
+                            <span
+                              className={`rounded-md px-2 py-1 text-xs font-semibold ${statusColor[job.status]}`}
+                            >
+                              {job.status}
+                            </span>
                           </td>
-                          <td className="py-3">{job.durationMs ? `${Math.round(job.durationMs / 1000)}s` : "pending"}</td>
+                          <td className="py-3">
+                            {job.durationMs
+                              ? `${Math.round(job.durationMs / 1000)}s`
+                              : "pending"}
+                          </td>
                           <td className="py-3">${job.costUsd.toFixed(4)}</td>
-                          <td className="hidden py-3 text-graphite-500 2xl:table-cell">{job.createdLabel}</td>
+                          <td className="hidden py-3 text-graphite-500 2xl:table-cell">
+                            {job.createdLabel}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -217,22 +349,43 @@ export function DashboardShell({ snapshot }: { snapshot: DashboardSnapshot }) {
                 <div className="flex items-start justify-between">
                   <div>
                     <h2 className="text-base font-semibold">Live job</h2>
-                    <p className="font-mono text-xs text-graphite-500">{selectedJob.id}</p>
+                    <p className="font-mono text-xs text-graphite-500">
+                      {liveJob.id}
+                    </p>
                   </div>
-                  <span className={`rounded-md px-2 py-1 text-xs font-semibold ${statusColor[selectedJob.status]}`}>{selectedJob.status}</span>
+                  <span
+                    className={`rounded-md px-2 py-1 text-xs font-semibold ${statusColor[liveJob.status]}`}
+                  >
+                    {liveJob.status}
+                  </span>
                 </div>
                 <div className="mt-5 space-y-3">
-                  {selectedJob.timeline.map((event, index) => (
-                    <div key={`${event.status}-${event.at}`} className="flex gap-3">
+                  {liveJob.timeline.map((event, index) => (
+                    <div
+                      key={`${event.status}-${event.at}`}
+                      className="flex gap-3"
+                    >
                       <div className="flex flex-col items-center">
-                        <span className={`grid h-6 w-6 place-items-center rounded-full ${event.status === "complete" ? "bg-teal-600 text-white" : "bg-graphite-200 text-graphite-700"}`}>
-                          {event.status === "complete" ? <CheckCircle2 size={14} /> : <Clock3 size={14} />}
+                        <span
+                          className={`grid h-6 w-6 place-items-center rounded-full ${event.status === "complete" ? "bg-teal-600 text-white" : "bg-graphite-200 text-graphite-700"}`}
+                        >
+                          {event.status === "complete" ? (
+                            <CheckCircle2 size={14} />
+                          ) : (
+                            <Clock3 size={14} />
+                          )}
                         </span>
-                        {index < selectedJob.timeline.length - 1 ? <span className="h-9 w-px bg-graphite-200" /> : null}
+                        {index < liveJob.timeline.length - 1 ? (
+                          <span className="h-9 w-px bg-graphite-200" />
+                        ) : null}
                       </div>
                       <div>
-                        <div className="text-sm font-semibold capitalize">{event.status}</div>
-                        <div className="text-xs text-graphite-500">{event.label}</div>
+                        <div className="text-sm font-semibold capitalize">
+                          {event.status}
+                        </div>
+                        <div className="text-xs text-graphite-500">
+                          {event.label}
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -242,20 +395,36 @@ export function DashboardShell({ snapshot }: { snapshot: DashboardSnapshot }) {
                     <span>Streaming output</span>
                     <RefreshCw size={14} />
                   </div>
-                  <pre className="whitespace-pre-wrap text-xs leading-5 text-graphite-100">{selectedJob.outputPreview}</pre>
+                  <pre className="whitespace-pre-wrap text-xs leading-5 text-graphite-100">
+                    {liveJob.outputPreview}
+                  </pre>
                 </div>
               </div>
 
               <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
-                <Metric label="Queued" value={snapshot.health.queued} accent="bg-amber-500" />
-                <Metric label="Processing" value={snapshot.health.processing} accent="bg-teal-600" />
-                <Metric label="Retrying" value={snapshot.health.retrying} accent="bg-orange-500" />
+                <Metric
+                  label="Queued"
+                  value={snapshot.health.queued}
+                  accent="bg-amber-500"
+                />
+                <Metric
+                  label="Processing"
+                  value={snapshot.health.processing}
+                  accent="bg-teal-600"
+                />
+                <Metric
+                  label="Retrying"
+                  value={snapshot.health.retrying}
+                  accent="bg-orange-500"
+                />
               </div>
 
               <div className="rounded-md border border-graphite-200 bg-white p-5 shadow-panel">
                 <div className="mb-4 flex items-center justify-between">
                   <h2 className="text-base font-semibold">Queue health</h2>
-                  <span className="text-xs text-graphite-500">{queueTotal} active</span>
+                  <span className="text-xs text-graphite-500">
+                    {queueTotal} active
+                  </span>
                 </div>
                 <div className="flex h-24 items-end gap-2">
                   {snapshot.health.latencySparkline.map((value, index) => (
@@ -269,11 +438,15 @@ export function DashboardShell({ snapshot }: { snapshot: DashboardSnapshot }) {
                 <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
                   <div className="rounded-md bg-graphite-50 p-3">
                     <div className="text-xs text-graphite-500">Avg latency</div>
-                    <div className="font-semibold">{snapshot.health.averageLatencySeconds}s</div>
+                    <div className="font-semibold">
+                      {snapshot.health.averageLatencySeconds}s
+                    </div>
                   </div>
                   <div className="rounded-md bg-graphite-50 p-3">
                     <div className="text-xs text-graphite-500">Error rate</div>
-                    <div className="font-semibold">{snapshot.health.errorRatePercent}%</div>
+                    <div className="font-semibold">
+                      {snapshot.health.errorRatePercent}%
+                    </div>
                   </div>
                 </div>
               </div>
@@ -282,12 +455,17 @@ export function DashboardShell({ snapshot }: { snapshot: DashboardSnapshot }) {
                 <h2 className="text-base font-semibold">Delivery</h2>
                 <div className="mt-4 space-y-3 text-sm">
                   {snapshot.deliveries.map((delivery) => (
-                    <div key={delivery.target} className="flex items-center justify-between rounded-md border border-graphite-200 px-3 py-2">
+                    <div
+                      key={delivery.target}
+                      className="flex items-center justify-between rounded-md border border-graphite-200 px-3 py-2"
+                    >
                       <span className="inline-flex items-center gap-2">
                         <Webhook size={14} />
                         {delivery.target}
                       </span>
-                      <span className="text-xs text-graphite-500">{delivery.status}</span>
+                      <span className="text-xs text-graphite-500">
+                        {delivery.status}
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -300,7 +478,15 @@ export function DashboardShell({ snapshot }: { snapshot: DashboardSnapshot }) {
   );
 }
 
-function Metric({ label, value, accent }: { label: string; value: number; accent: string }) {
+function Metric({
+  label,
+  value,
+  accent,
+}: {
+  label: string;
+  value: number;
+  accent: string;
+}) {
   return (
     <div className="rounded-md border border-graphite-200 bg-white p-4 shadow-panel">
       <div className="flex items-center gap-2 text-xs text-graphite-500">

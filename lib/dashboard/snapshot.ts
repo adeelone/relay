@@ -3,7 +3,13 @@ import { recipes } from "@/recipes/registry";
 import type { JobStatus } from "@/lib/jobs/types";
 
 export interface DashboardSnapshot {
-  recipes: Array<{ id: string; name: string; description: string; sampleInput: Record<string, unknown>; estimate: { tokens: number; costUsd: number } }>;
+  recipes: Array<{
+    id: string;
+    name: string;
+    description: string;
+    sampleInput: Record<string, unknown>;
+    estimate: { tokens: number; costUsd: number };
+  }>;
   jobs: Array<{
     id: string;
     recipeName: string;
@@ -28,7 +34,7 @@ export interface DashboardSnapshot {
 
 export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
   seedIfEmpty();
-  const jobs = await memoryDb.listJobs();
+  const { jobs } = await memoryDb.listJobs({ admin: true, pageSize: 8 });
   const counts = await memoryDb.countsByStatus();
   return {
     recipes: recipes.map((recipe) => ({
@@ -36,29 +42,52 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
       name: recipe.name,
       description: recipe.description,
       sampleInput: recipe.sampleInput,
-      estimate: recipe.estimateCost(recipe.sampleInput as Record<string, unknown>)
+      estimate: recipe.estimateCost(
+        recipe.sampleInput as Record<string, unknown>,
+      ),
     })),
     jobs: jobs.slice(0, 8).map((job) => {
       const recipe = recipes.find((item) => item.id === job.recipe);
-      const durationMs = job.startedAt && job.completedAt ? Date.parse(job.completedAt) - Date.parse(job.startedAt) : undefined;
+      const durationMs =
+        job.startedAt && job.completedAt
+          ? Date.parse(job.completedAt) - Date.parse(job.startedAt)
+          : undefined;
       return {
         id: job.id,
         recipeName: recipe?.name ?? job.recipe,
         status: job.status,
         durationMs,
         costUsd: job.costUsd,
-        createdLabel: new Date(job.queuedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        createdLabel: new Date(job.queuedAt).toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
         timeline: [
-          { status: "queued", at: job.queuedAt, label: "Accepted by HTTP layer" },
-          { status: job.startedAt ? "processing" : "queued", at: job.startedAt ?? job.queuedAt, label: "Workflow owns execution" },
-          { status: job.status, at: job.completedAt ?? job.startedAt ?? job.queuedAt, label: job.status === "complete" ? "Delivery triggered" : "Awaiting next transition" }
+          {
+            status: "queued",
+            at: job.queuedAt,
+            label: "Accepted by HTTP layer",
+          },
+          {
+            status: job.startedAt ? "processing" : "queued",
+            at: job.startedAt ?? job.queuedAt,
+            label: "Workflow owns execution",
+          },
+          {
+            status: job.status,
+            at: job.completedAt ?? job.startedAt ?? job.queuedAt,
+            label:
+              job.status === "complete"
+                ? "Delivery triggered"
+                : "Awaiting next transition",
+          },
         ],
         outputPreview:
           typeof job.output === "string"
             ? job.output
             : job.output
               ? JSON.stringify(job.output, null, 2)
-              : "Queued event written.\nWorker will stream chunks through job_events."
+              : "Queued event written.\nWorker will stream chunks through job_events.",
       };
     }),
     health: {
@@ -68,13 +97,13 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
       averageLatencySeconds: 18,
       errorRatePercent: 2.4,
       latencySparkline: [34, 48, 39, 62, 55, 70, 46, 64, 58, 72, 61, 44],
-      workerHeartbeat: "12s ago"
+      workerHeartbeat: "12s ago",
     },
     deliveries: [
       { target: "in-app inbox", status: "enabled" },
       { target: "signed webhook", status: "3 retries" },
-      { target: "email summary", status: "feature flag" }
-    ]
+      { target: "email summary", status: "feature flag" },
+    ],
   };
 }
 
@@ -93,7 +122,7 @@ function seedIfEmpty() {
     attempts: 1,
     queuedAt: new Date(now.getTime() - 72_000).toISOString(),
     startedAt: new Date(now.getTime() - 49_000).toISOString(),
-    output: "Collected 2 sources.\nDrafting sourced sub-questions...\n"
+    output: "Collected 2 sources.\nDrafting sourced sub-questions...\n",
   });
   memoryDb.seed({
     id: "job_done_9aQ1",
@@ -108,7 +137,11 @@ function seedIfEmpty() {
     queuedAt: new Date(now.getTime() - 640_000).toISOString(),
     startedAt: new Date(now.getTime() - 620_000).toISOString(),
     completedAt: new Date(now.getTime() - 590_000).toISOString(),
-    output: { decisions: ["Keep webhook delivery in scope"], actionItems: [{ owner: "Maya", task: "Prep beta list" }], openQuestions: [] }
+    output: {
+      decisions: ["Keep webhook delivery in scope"],
+      actionItems: [{ owner: "Maya", task: "Prep beta list" }],
+      openQuestions: [],
+    },
   });
   memoryDb.seed({
     id: "job_retry_Lf22",
@@ -123,7 +156,7 @@ function seedIfEmpty() {
     queuedAt: new Date(now.getTime() - 220_000).toISOString(),
     startedAt: new Date(now.getTime() - 210_000).toISOString(),
     output: undefined,
-    error: "Provider timeout"
+    error: "Provider timeout",
   });
   void base;
 }
