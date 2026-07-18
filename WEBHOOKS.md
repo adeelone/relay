@@ -19,7 +19,10 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 
 export function verify(body: string, signature: string, secret: string) {
   const expected = createHmac("sha256", secret).update(body).digest("hex");
-  return timingSafeEqual(Buffer.from(signature, "hex"), Buffer.from(expected, "hex"));
+  return timingSafeEqual(
+    Buffer.from(signature, "hex"),
+    Buffer.from(expected, "hex"),
+  );
 }
 ```
 

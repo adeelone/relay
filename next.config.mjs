@@ -4,8 +4,8 @@ const nextConfig = {
   staticPageGenerationTimeout: 10,
   experimental: {
     cpus: 4,
-    serverComponentsExternalPackages: ["pg"]
-  }
+    serverComponentsExternalPackages: ["pg"],
+  },
 };
 
 export default nextConfig;

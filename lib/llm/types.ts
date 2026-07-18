@@ -16,5 +16,8 @@ export interface LLMResponse {
 
 export interface LLMProvider {
   id: string;
-  generate(messages: LLMMessage[], options?: { schemaName?: string; temperature?: number }): Promise<LLMResponse>;
+  generate(
+    messages: LLMMessage[],
+    options?: { schemaName?: string; temperature?: number },
+  ): Promise<LLMResponse>;
 }

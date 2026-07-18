@@ -6,7 +6,10 @@ describe("recipes", () => {
     expect(recipes).toHaveLength(5);
     for (const recipe of recipes) {
       expect(() => recipe.inputSchema.parse(recipe.sampleInput)).not.toThrow();
-      expect(recipe.estimateCost(recipe.sampleInput as Record<string, unknown>).tokens).toBeGreaterThan(0);
+      expect(
+        recipe.estimateCost(recipe.sampleInput as Record<string, unknown>)
+          .tokens,
+      ).toBeGreaterThan(0);
     }
   });
 });

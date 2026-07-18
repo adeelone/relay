@@ -8,13 +8,13 @@ export class MockSearchProvider implements SearchProvider {
       {
         title: `Background for ${query}`,
         url: "https://example.com/background",
-        snippet: "Mock source used in local tests and development."
+        snippet: "Mock source used in local tests and development.",
       },
       {
         title: `Recent context for ${query}`,
         url: "https://example.com/context",
-        snippet: "Second mock result for citation preservation."
-      }
+        snippet: "Second mock result for citation preservation.",
+      },
     ];
   }
 }

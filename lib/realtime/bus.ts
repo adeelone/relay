@@ -8,7 +8,10 @@ export function publishJobEvent(event: JobEventRecord) {
   emitter.emit(event.jobId, event);
 }
 
-export function subscribeToJob(jobId: string, listener: (event: JobEventRecord) => void) {
+export function subscribeToJob(
+  jobId: string,
+  listener: (event: JobEventRecord) => void,
+) {
   emitter.on(jobId, listener);
   return () => emitter.off(jobId, listener);
 }

@@ -11,10 +11,13 @@ export function hashApiKey(secret: string) {
 
 export function getCallerFromRequest(request: Request) {
   const authorization = request.headers.get("authorization");
-  const key = authorization?.startsWith("Bearer ") ? authorization.slice(7) : undefined;
+  const key = authorization?.startsWith("Bearer ")
+    ? authorization.slice(7)
+    : undefined;
   return {
     apiKey: key,
     apiKeyHash: key ? hashApiKey(key) : undefined,
-    ip: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "local"
+    ip:
+      request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "local",
   };
 }

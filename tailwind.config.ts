@@ -11,20 +11,20 @@ const config: Config = {
           200: "#d8dddf",
           500: "#6b7478",
           700: "#30383c",
-          900: "#101417"
+          900: "#101417",
         },
         relay: {
           teal: "#0f8f8a",
           amber: "#c78113",
-          red: "#b6403a"
-        }
+          red: "#b6403a",
+        },
       },
       boxShadow: {
-        panel: "0 12px 32px rgba(16, 20, 23, 0.08)"
-      }
-    }
+        panel: "0 12px 32px rgba(16, 20, 23, 0.08)",
+      },
+    },
   },
-  plugins: []
+  plugins: [],
 };
 
 export default config;

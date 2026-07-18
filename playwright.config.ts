@@ -5,11 +5,11 @@ export default defineConfig({
   webServer: {
     command: "npm run dev -- -p 3011",
     url: "http://127.0.0.1:3011",
-    reuseExistingServer: false
+    reuseExistingServer: false,
   },
   use: {
     baseURL: "http://127.0.0.1:3011",
-    trace: "on-first-retry"
+    trace: "on-first-retry",
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }]
+  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
 });

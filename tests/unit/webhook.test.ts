@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { signWebhookPayload, verifyWebhookPayload } from "@/lib/delivery/webhook";
+import {
+  signWebhookPayload,
+  verifyWebhookPayload,
+} from "@/lib/delivery/webhook";
 
 describe("webhook signatures", () => {
   it("verifies signed payloads", () => {

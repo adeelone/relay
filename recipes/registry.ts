@@ -10,7 +10,7 @@ export const recipes: AnyRecipe[] = [
   meetingNotesRecipe,
   researchDigestRecipe,
   codeReviewRecipe,
-  inboxTriageRecipe
+  inboxTriageRecipe,
 ];
 
 export function getRecipe(recipeId: string): AnyRecipe {
