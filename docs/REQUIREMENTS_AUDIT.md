@@ -1,6 +1,6 @@
 # Requirements Audit
 
-Source: `C:\Users\adeem\Downloads\relay-codex-prompt.md`
+Source: `relay-codex-prompt.md`
 
 Test baseline: `npm ci`, `npm run typecheck`, `npm run lint`, `npm test`, `npm run build`, `npm run test:e2e`, `npm audit --omit=dev`.
 
