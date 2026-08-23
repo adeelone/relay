@@ -1,6 +1,11 @@
 import type { JobRecord } from "@/lib/jobs/types";
 import { memoryDb } from "@/lib/db/memory";
+import { logEvent } from "@/lib/logging/logger";
 import { deliverWebhook } from "./webhook";
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 export async function deliverJobResult(job: JobRecord) {
   const deliveries: Array<{ target: string; status: string }> = [];
@@ -12,11 +17,17 @@ export async function deliverJobResult(job: JobRecord) {
       attempt: 1,
     });
     deliveries.push({ target: "in-app", status: "unread" });
+    logEvent("info", "delivery_attempted", {
+      jobId: job.id,
+      deliveryTarget: "in-app",
+      status: "unread",
+    });
   }
   if (job.delivery.webhookUrl) {
     let status = "failed";
     let responseStatus: number | undefined;
     for (let attempt = 1; attempt <= 3; attempt += 1) {
+      if (attempt > 1) await sleep(2 ** (attempt - 2) * 1000);
       const result = await deliverWebhook(job.delivery.webhookUrl, {
         jobId: job.id,
         status: job.status,
@@ -31,6 +42,13 @@ export async function deliverJobResult(job: JobRecord) {
         attempt,
         responseStatus,
         deliveredAt: result.ok ? new Date().toISOString() : undefined,
+      });
+      logEvent(result.ok ? "info" : "warn", "delivery_attempted", {
+        jobId: job.id,
+        deliveryTarget: "webhook",
+        status,
+        attempt,
+        responseStatus,
       });
       if (result.ok) break;
     }
@@ -47,6 +65,11 @@ export async function deliverJobResult(job: JobRecord) {
       attempt: 1,
     });
     deliveries.push({ target: "email", status });
+    logEvent("info", "delivery_attempted", {
+      jobId: job.id,
+      deliveryTarget: "email",
+      status,
+    });
   }
   return deliveries;
 }

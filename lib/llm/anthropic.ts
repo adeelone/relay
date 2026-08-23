@@ -3,10 +3,14 @@ import type { LLMMessage, LLMProvider, LLMResponse } from "./types";
 export class AnthropicProvider implements LLMProvider {
   id = "anthropic";
 
-  constructor(private readonly apiKey = process.env.ANTHROPIC_API_KEY) {}
+  constructor(
+    private readonly apiKey = process.env.ANTHROPIC_API_KEY,
+    private readonly model = process.env.ANTHROPIC_MODEL,
+  ) {}
 
   async generate(messages: LLMMessage[]): Promise<LLMResponse> {
     if (!this.apiKey) throw new Error("ANTHROPIC_API_KEY is not configured");
+    if (!this.model) throw new Error("ANTHROPIC_MODEL is not configured");
     const system = messages.find(
       (message) => message.role === "system",
     )?.content;
@@ -21,7 +25,7 @@ export class AnthropicProvider implements LLMProvider {
         "content-type": "application/json",
       },
       body: JSON.stringify({
-        model: "claude-3-5-haiku-latest",
+        model: this.model,
         max_tokens: 1200,
         system,
         messages: userMessages,
@@ -38,7 +42,7 @@ export class AnthropicProvider implements LLMProvider {
       usage: {
         promptTokens: payload.usage?.input_tokens ?? 0,
         completionTokens: payload.usage?.output_tokens ?? 0,
-        model: "claude-3-5-haiku-latest",
+        model: this.model,
       },
     };
   }

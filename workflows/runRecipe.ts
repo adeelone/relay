@@ -75,6 +75,10 @@ export async function runRecipeJob(jobId: string) {
       promptTokens,
       completionTokens,
       costUsd,
+      durationMs:
+        completed.startedAt && completed.completedAt
+          ? Date.parse(completed.completedAt) - Date.parse(completed.startedAt)
+          : undefined,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";

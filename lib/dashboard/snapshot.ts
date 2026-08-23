@@ -109,7 +109,6 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
 
 function seedIfEmpty() {
   const now = new Date();
-  const base = now.toISOString();
   memoryDb.seed({
     id: "job_live_4YkP",
     recipe: "research-digest",
@@ -158,5 +157,4 @@ function seedIfEmpty() {
     output: undefined,
     error: "Provider timeout",
   });
-  void base;
 }

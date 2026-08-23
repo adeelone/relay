@@ -1,12 +1,21 @@
+import { NextResponse } from "next/server";
+import { getCallerFromRequest } from "@/lib/auth/api-keys";
 import { memoryDb } from "@/lib/db/memory";
+import { canAccessJob } from "@/lib/jobs/service";
 import { subscribeToJob } from "@/lib/realtime/bus";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: { jobId: string } },
 ) {
+  const caller = getCallerFromRequest(request);
+  const job = await memoryDb.getJob(params.jobId);
+  if (!job || !canAccessJob(job, caller)) {
+    return NextResponse.json({ error: "not_found" }, { status: 404 });
+  }
+
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {

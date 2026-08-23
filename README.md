@@ -34,7 +34,9 @@ Copy `.env.example` to `.env.local` and set:
 - `WEBHOOK_SIGNING_SECRET`
 - optional `REDIS_URL`
 - optional `OPENAI_API_KEY`
-- optional `ANTHROPIC_API_KEY`
+- optional `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`,
+  `ANTHROPIC_INPUT_COST_PER_MILLION`, and
+  `ANTHROPIC_OUTPUT_COST_PER_MILLION`
 - optional `SEARCH_API_KEY`
 - optional `EMAIL_PROVIDER_KEY`
 

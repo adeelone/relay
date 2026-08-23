@@ -93,3 +93,9 @@ export interface WebhookDeliveryRecord {
   createdAt: string;
   deliveredAt?: string;
 }
+
+/** Strips internal correlation fields not meant for the public API surface. */
+export function toPublicJob(job: JobRecord) {
+  const { apiKeyId, idempotencyKey, ...publicJob } = job;
+  return publicJob;
+}
