@@ -15,19 +15,42 @@ const createJobSchema = z.object({
   delivery: deliveryConfigSchema.optional(),
 });
 
+export interface Caller {
+  apiKeyHash?: string;
+}
+
+/**
+ * Callers without an API key are treated as admin/local-dashboard access
+ * (matches the scoping already applied by GET /api/jobs); callers with a key
+ * may only reach jobs they created.
+ */
+export function canAccessJob(job: JobRecord, caller?: Caller) {
+  return !caller?.apiKeyHash || job.apiKeyId === caller.apiKeyHash;
+}
+
 export async function createJob(request: Request) {
   const caller = getCallerFromRequest(request);
   const rate = takeToken(caller.apiKeyHash ?? caller.ip);
   if (!rate.allowed) {
     return {
-      error: "rate_limited",
-      retryAfterSeconds: rate.retryAfterSeconds as number,
+      error: "rate_limited" as const,
+      retryAfterSeconds: rate.retryAfterSeconds,
     };
   }
 
-  const parsed = createJobSchema.parse(await request.json());
-  const recipe = getRecipe(parsed.recipe);
-  const input = recipe.inputSchema.parse(parsed.input);
+  let parsed: z.infer<typeof createJobSchema>;
+  let recipe: ReturnType<typeof getRecipe>;
+  let input: Record<string, unknown>;
+  try {
+    parsed = createJobSchema.parse(await request.json());
+    recipe = getRecipe(parsed.recipe);
+    input = recipe.inputSchema.parse(parsed.input);
+  } catch (error) {
+    return {
+      error: "invalid_request" as const,
+      message: error instanceof Error ? error.message : "Invalid request body",
+    };
+  }
   const idempotencyKey = request.headers.get("idempotency-key") ?? undefined;
   if (idempotencyKey) {
     const existing = await memoryDb.resolveIdempotency(idempotencyKey);
@@ -68,9 +91,9 @@ export async function createJob(request: Request) {
   return { job, existing: false };
 }
 
-export async function getJobSnapshot(jobId: string) {
+export async function getJobSnapshot(jobId: string, caller?: Caller) {
   const job = await memoryDb.getJob(jobId);
-  if (!job) return undefined;
+  if (!job || !canAccessJob(job, caller)) return undefined;
   const [events, attempts] = await Promise.all([
     memoryDb.listEvents(jobId),
     memoryDb.listAttempts(jobId),
@@ -78,9 +101,9 @@ export async function getJobSnapshot(jobId: string) {
   return { job, events, attempts };
 }
 
-export async function cancelJob(jobId: string) {
+export async function cancelJob(jobId: string, caller?: Caller) {
   const job = await memoryDb.getJob(jobId);
-  if (!job) return undefined;
+  if (!job || !canAccessJob(job, caller)) return undefined;
   if (job.status === "complete" || job.status === "failed") return job;
   const updated = await memoryDb.updateJob(jobId, {
     status: "cancelled",
@@ -94,9 +117,10 @@ export async function cancelJob(jobId: string) {
   return updated;
 }
 
-export async function retryJob(jobId: string) {
+export async function retryJob(jobId: string, caller?: Caller) {
   const job = await memoryDb.getJob(jobId);
-  if (!job || job.status !== "failed") return undefined;
+  if (!job || !canAccessJob(job, caller) || job.status !== "failed")
+    return undefined;
   const updated = await memoryDb.updateJob(jobId, {
     status: "queued",
     error: undefined,

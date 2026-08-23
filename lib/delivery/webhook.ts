@@ -24,13 +24,18 @@ export function verifyWebhookPayload(
 export async function deliverWebhook(url: string, payload: unknown) {
   const body = JSON.stringify(payload);
   const signature = signWebhookPayload(body);
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-relay-signature": signature,
-    },
-    body,
-  });
-  return { ok: response.ok, status: response.status };
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-relay-signature": signature,
+      },
+      body,
+      signal: AbortSignal.timeout(10_000),
+    });
+    return { ok: response.ok, status: response.status };
+  } catch {
+    return { ok: false, status: 0 };
+  }
 }

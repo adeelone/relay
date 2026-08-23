@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { memoryDb } from "@/lib/db/memory";
 import { getCallerFromRequest } from "@/lib/auth/api-keys";
 import { createJob } from "@/lib/jobs/service";
-import { jobStatuses, type JobStatus } from "@/lib/jobs/types";
+import { jobStatuses, toPublicJob, type JobStatus } from "@/lib/jobs/types";
 import { getRecipe } from "@/recipes/registry";
 
 export const dynamic = "force-dynamic";
@@ -10,12 +10,18 @@ export const dynamic = "force-dynamic";
 export async function POST(request: Request) {
   const result = await createJob(request);
   if ("error" in result) {
+    if (result.error === "rate_limited") {
+      return NextResponse.json(
+        { error: result.error },
+        {
+          status: 429,
+          headers: { "Retry-After": String(result.retryAfterSeconds) },
+        },
+      );
+    }
     return NextResponse.json(
-      { error: result.error },
-      {
-        status: 429,
-        headers: { "Retry-After": String(result.retryAfterSeconds) },
-      },
+      { error: result.error, message: result.message },
+      { status: 400 },
     );
   }
 
@@ -40,8 +46,8 @@ export async function GET(request: Request) {
   const status = jobStatuses.includes(statusFilter as JobStatus)
     ? (statusFilter as JobStatus)
     : undefined;
-  const page = Number(url.searchParams.get("page") ?? "1");
-  const pageSize = Number(url.searchParams.get("pageSize") ?? "25");
+  const page = parsePositiveInt(url.searchParams.get("page"), 1);
+  const pageSize = parsePositiveInt(url.searchParams.get("pageSize"), 25);
   const result = await memoryDb.listJobs({
     apiKeyId: caller.apiKeyHash,
     admin: !caller.apiKeyHash,
@@ -55,8 +61,14 @@ export async function GET(request: Request) {
   return NextResponse.json({
     ...result,
     jobs: result.jobs.map((job) => ({
-      ...job,
+      ...toPublicJob(job),
       recipeName: getRecipe(job.recipe).name,
     })),
   });
+}
+
+function parsePositiveInt(value: string | null, fallback: number) {
+  if (!value) return fallback;
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }

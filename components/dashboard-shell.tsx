@@ -21,7 +21,7 @@ import {
   Square,
   Webhook,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { DashboardSnapshot } from "@/lib/dashboard/snapshot";
 import type { JobStatus } from "@/lib/jobs/types";
 
@@ -48,6 +48,8 @@ export function DashboardShell({ snapshot }: { snapshot: DashboardSnapshot }) {
   );
   const [jobs, setJobs] = useState(snapshot.jobs);
   const [liveJob, setLiveJob] = useState(snapshot.jobs[0]);
+  const [submitError, setSubmitError] = useState<string | undefined>();
+  const eventSourceRef = useRef<EventSource | undefined>(undefined);
   const recipe =
     snapshot.recipes.find((item) => item.id === selectedRecipe) ??
     snapshot.recipes[0];
@@ -66,20 +68,46 @@ export function DashboardShell({ snapshot }: { snapshot: DashboardSnapshot }) {
     setInputText(sampleInput);
   }, [sampleInput]);
 
+  useEffect(() => {
+    return () => eventSourceRef.current?.close();
+  }, []);
+
   async function submitJob() {
     if (!recipe) return;
-    const input = JSON.parse(inputText) as Record<string, unknown>;
-    const response = await fetch("/api/jobs", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        recipe: recipe.id,
-        input,
-        delivery: { inApp: true },
-      }),
-    });
+    setSubmitError(undefined);
+    let input: Record<string, unknown>;
+    try {
+      input = JSON.parse(inputText) as Record<string, unknown>;
+    } catch {
+      setSubmitError("Input payload is not valid JSON.");
+      return;
+    }
+
+    let response: Response;
+    try {
+      response = await fetch("/api/jobs", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          recipe: recipe.id,
+          input,
+          delivery: { inApp: true },
+        }),
+      });
+    } catch {
+      setSubmitError("Could not reach the API. Check your connection.");
+      return;
+    }
     if (!response.ok) {
-      throw new Error(`Job submission failed: ${response.status}`);
+      const body = (await response.json().catch(() => undefined)) as
+        | { message?: string; error?: string }
+        | undefined;
+      setSubmitError(
+        body?.message ??
+          body?.error ??
+          `Job submission failed: ${response.status}`,
+      );
+      return;
     }
     const payload = (await response.json()) as {
       jobId: string;
@@ -109,7 +137,9 @@ export function DashboardShell({ snapshot }: { snapshot: DashboardSnapshot }) {
     setJobs((current) => [nextJob, ...current].slice(0, 8));
     setLiveJob(nextJob);
 
+    eventSourceRef.current?.close();
     const source = new EventSource(payload.streamUrl);
+    eventSourceRef.current = source;
     source.onmessage = (message) => {
       const event = JSON.parse(message.data) as {
         status?: JobStatus;
@@ -118,6 +148,7 @@ export function DashboardShell({ snapshot }: { snapshot: DashboardSnapshot }) {
         createdAt: string;
       };
       setLiveJob((current) => {
+        if (!current) return current;
         const status = event.status ?? current.status;
         return {
           ...current,
@@ -133,6 +164,13 @@ export function DashboardShell({ snapshot }: { snapshot: DashboardSnapshot }) {
             : current.outputPreview,
         };
       });
+      if (event.status) {
+        setJobs((current) =>
+          current.map((job) =>
+            job.id === payload.jobId ? { ...job, status: event.status! } : job,
+          ),
+        );
+      }
       if (
         event.status === "complete" ||
         event.status === "failed" ||
@@ -278,6 +316,11 @@ export function DashboardShell({ snapshot }: { snapshot: DashboardSnapshot }) {
                       A returned job ID includes poll and stream URLs for
                       fallback and live views.
                     </p>
+                    {submitError ? (
+                      <p className="mt-3 rounded-md bg-red-50 px-3 py-2 text-xs leading-5 text-red-900">
+                        {submitError}
+                      </p>
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -346,59 +389,70 @@ export function DashboardShell({ snapshot }: { snapshot: DashboardSnapshot }) {
 
             <aside className="space-y-5">
               <div className="rounded-md border border-graphite-200 bg-white p-5 shadow-panel">
-                <div className="flex items-start justify-between">
+                {liveJob ? (
+                  <>
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <h2 className="text-base font-semibold">Live job</h2>
+                        <p className="font-mono text-xs text-graphite-500">
+                          {liveJob.id}
+                        </p>
+                      </div>
+                      <span
+                        className={`rounded-md px-2 py-1 text-xs font-semibold ${statusColor[liveJob.status]}`}
+                      >
+                        {liveJob.status}
+                      </span>
+                    </div>
+                    <div className="mt-5 space-y-3">
+                      {liveJob.timeline.map((event, index) => (
+                        <div
+                          key={`${index}-${event.status}-${event.at}`}
+                          className="flex gap-3"
+                        >
+                          <div className="flex flex-col items-center">
+                            <span
+                              className={`grid h-6 w-6 place-items-center rounded-full ${event.status === "complete" ? "bg-teal-600 text-white" : "bg-graphite-200 text-graphite-700"}`}
+                            >
+                              {event.status === "complete" ? (
+                                <CheckCircle2 size={14} />
+                              ) : (
+                                <Clock3 size={14} />
+                              )}
+                            </span>
+                            {index < liveJob.timeline.length - 1 ? (
+                              <span className="h-9 w-px bg-graphite-200" />
+                            ) : null}
+                          </div>
+                          <div>
+                            <div className="text-sm font-semibold capitalize">
+                              {event.status}
+                            </div>
+                            <div className="text-xs text-graphite-500">
+                              {event.label}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mt-5 rounded-md border border-graphite-200 bg-graphite-900 p-4 text-white">
+                      <div className="mb-3 flex items-center justify-between text-xs text-graphite-200">
+                        <span>Streaming output</span>
+                        <RefreshCw size={14} />
+                      </div>
+                      <pre className="whitespace-pre-wrap text-xs leading-5 text-graphite-100">
+                        {liveJob.outputPreview}
+                      </pre>
+                    </div>
+                  </>
+                ) : (
                   <div>
                     <h2 className="text-base font-semibold">Live job</h2>
-                    <p className="font-mono text-xs text-graphite-500">
-                      {liveJob.id}
+                    <p className="mt-2 text-sm text-graphite-500">
+                      Submit a job to see live status here.
                     </p>
                   </div>
-                  <span
-                    className={`rounded-md px-2 py-1 text-xs font-semibold ${statusColor[liveJob.status]}`}
-                  >
-                    {liveJob.status}
-                  </span>
-                </div>
-                <div className="mt-5 space-y-3">
-                  {liveJob.timeline.map((event, index) => (
-                    <div
-                      key={`${event.status}-${event.at}`}
-                      className="flex gap-3"
-                    >
-                      <div className="flex flex-col items-center">
-                        <span
-                          className={`grid h-6 w-6 place-items-center rounded-full ${event.status === "complete" ? "bg-teal-600 text-white" : "bg-graphite-200 text-graphite-700"}`}
-                        >
-                          {event.status === "complete" ? (
-                            <CheckCircle2 size={14} />
-                          ) : (
-                            <Clock3 size={14} />
-                          )}
-                        </span>
-                        {index < liveJob.timeline.length - 1 ? (
-                          <span className="h-9 w-px bg-graphite-200" />
-                        ) : null}
-                      </div>
-                      <div>
-                        <div className="text-sm font-semibold capitalize">
-                          {event.status}
-                        </div>
-                        <div className="text-xs text-graphite-500">
-                          {event.label}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                <div className="mt-5 rounded-md border border-graphite-200 bg-graphite-900 p-4 text-white">
-                  <div className="mb-3 flex items-center justify-between text-xs text-graphite-200">
-                    <span>Streaming output</span>
-                    <RefreshCw size={14} />
-                  </div>
-                  <pre className="whitespace-pre-wrap text-xs leading-5 text-graphite-100">
-                    {liveJob.outputPreview}
-                  </pre>
-                </div>
+                )}
               </div>
 
               <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">

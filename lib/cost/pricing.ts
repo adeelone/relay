@@ -3,9 +3,29 @@ import type { CostEstimate } from "@/lib/jobs/types";
 const pricingPerMillion: Record<string, { input: number; output: number }> = {
   "llama-3.3-70b-versatile": { input: 0.59, output: 0.79 },
   "gpt-4o-mini": { input: 0.15, output: 0.6 },
-  "claude-3-5-haiku-latest": { input: 0.8, output: 4.0 },
   mock: { input: 0, output: 0 },
 };
+
+const anthropicModel = process.env.ANTHROPIC_MODEL;
+const anthropicInputPriceRaw = process.env.ANTHROPIC_INPUT_COST_PER_MILLION;
+const anthropicOutputPriceRaw = process.env.ANTHROPIC_OUTPUT_COST_PER_MILLION;
+const anthropicInputPrice = anthropicInputPriceRaw
+  ? Number(anthropicInputPriceRaw)
+  : Number.NaN;
+const anthropicOutputPrice = anthropicOutputPriceRaw
+  ? Number(anthropicOutputPriceRaw)
+  : Number.NaN;
+
+if (
+  anthropicModel &&
+  Number.isFinite(anthropicInputPrice) &&
+  Number.isFinite(anthropicOutputPrice)
+) {
+  pricingPerMillion[anthropicModel] = {
+    input: anthropicInputPrice,
+    output: anthropicOutputPrice,
+  };
+}
 
 export function estimateTokensFromText(text: string) {
   return Math.max(100, Math.ceil(text.length / 4));
