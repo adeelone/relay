@@ -1,9 +1,9 @@
-import { memoryDb } from "@/lib/db/memory";
+import { db } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const metrics = await memoryDb.metrics();
+  const metrics = await db.metrics();
   const counts = metrics.counts;
   const body = [
     "# HELP jobs_queued_total Jobs currently queued",

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { Recipe } from "../types";
-import { estimateRecipeCost, generateStructured } from "../helpers";
+import { estimateRecipeCost, runStructuredRecipe } from "../helpers";
 
 const inputSchema = z.object({
   messages: z
@@ -46,17 +46,11 @@ export const inboxTriageRecipe: Recipe<
   estimateCost: estimateRecipeCost,
   supportsStreaming: false,
   async run(input, ctx) {
-    const result = await generateStructured<z.infer<typeof outputSchema>>(
-      [
-        {
-          role: "system",
-          content:
-            "Return JSON that triages each message into urgent, FYI, can-wait, or spam-like.",
-        },
-        { role: "user", content: JSON.stringify(input) },
-      ],
+    return runStructuredRecipe(
+      "Return JSON that triages each message into urgent, FYI, can-wait, or spam-like.",
+      input,
+      outputSchema,
       ctx,
     );
-    return outputSchema.parse(result.data);
   },
 };

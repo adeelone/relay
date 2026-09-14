@@ -1,6 +1,6 @@
 import { nanoid } from "nanoid";
 import { z } from "zod";
-import { memoryDb } from "@/lib/db/memory";
+import { db, isUsingPostgres } from "@/lib/db";
 import { publishJobEvent } from "@/lib/realtime/bus";
 import { takeToken } from "@/lib/rate-limit/token-bucket";
 import { deliveryConfigSchema, type JobRecord } from "./types";
@@ -29,8 +29,12 @@ export function canAccessJob(job: JobRecord, caller?: Caller) {
 }
 
 export async function createJob(request: Request) {
-  const caller = getCallerFromRequest(request);
-  const rate = takeToken(caller.apiKeyHash ?? caller.ip);
+  const caller = await getCallerFromRequest(request);
+  const rateLimitKey = caller.apiKeyHash ?? caller.ip;
+  const keyRateLimit: number | undefined = caller.rateLimitPerMinute;
+  const rate = keyRateLimit
+    ? takeToken(rateLimitKey, keyRateLimit, keyRateLimit)
+    : takeToken(rateLimitKey);
   if (!rate.allowed) {
     return {
       error: "rate_limited" as const,
@@ -53,7 +57,7 @@ export async function createJob(request: Request) {
   }
   const idempotencyKey = request.headers.get("idempotency-key") ?? undefined;
   if (idempotencyKey) {
-    const existing = await memoryDb.resolveIdempotency(idempotencyKey);
+    const existing = await db.resolveIdempotency(idempotencyKey);
     if (existing) return { job: existing, existing: true };
   }
 
@@ -71,9 +75,9 @@ export async function createJob(request: Request) {
     attempts: 0,
     queuedAt: new Date().toISOString(),
   };
-  await memoryDb.createJob(job);
-  if (idempotencyKey) await memoryDb.saveIdempotency(idempotencyKey, job.id);
-  const event = await memoryDb.addEvent(job.id, {
+  await db.createJob(job);
+  if (idempotencyKey) await db.saveIdempotency(idempotencyKey, job.id);
+  const event = await db.addEvent(job.id, {
     status: "queued",
     message: "Job queued",
   });
@@ -84,32 +88,38 @@ export async function createJob(request: Request) {
     caller: caller.apiKeyHash ? "api-key" : "ip",
   });
 
-  setTimeout(() => {
-    void runRecipeJob(job.id);
-  }, 0);
+  // With a real Postgres backend, the worker process (workflows/dev-worker.ts)
+  // claims and runs queued jobs independently. Without one, there's no
+  // separate process sharing the in-memory store, so the API process must
+  // execute inline to make any progress at all.
+  if (!isUsingPostgres()) {
+    setTimeout(() => {
+      void runRecipeJob(job.id);
+    }, 0);
+  }
 
   return { job, existing: false };
 }
 
 export async function getJobSnapshot(jobId: string, caller?: Caller) {
-  const job = await memoryDb.getJob(jobId);
+  const job = await db.getJob(jobId);
   if (!job || !canAccessJob(job, caller)) return undefined;
   const [events, attempts] = await Promise.all([
-    memoryDb.listEvents(jobId),
-    memoryDb.listAttempts(jobId),
+    db.listEvents(jobId),
+    db.listAttempts(jobId),
   ]);
   return { job, events, attempts };
 }
 
 export async function cancelJob(jobId: string, caller?: Caller) {
-  const job = await memoryDb.getJob(jobId);
+  const job = await db.getJob(jobId);
   if (!job || !canAccessJob(job, caller)) return undefined;
   if (job.status === "complete" || job.status === "failed") return job;
-  const updated = await memoryDb.updateJob(jobId, {
+  const updated = await db.updateJob(jobId, {
     status: "cancelled",
     cancelledAt: new Date().toISOString(),
   });
-  const event = await memoryDb.addEvent(jobId, {
+  const event = await db.addEvent(jobId, {
     status: "cancelled",
     message: "Cancellation requested",
   });
@@ -118,21 +128,23 @@ export async function cancelJob(jobId: string, caller?: Caller) {
 }
 
 export async function retryJob(jobId: string, caller?: Caller) {
-  const job = await memoryDb.getJob(jobId);
+  const job = await db.getJob(jobId);
   if (!job || !canAccessJob(job, caller) || job.status !== "failed")
     return undefined;
-  const updated = await memoryDb.updateJob(jobId, {
+  const updated = await db.updateJob(jobId, {
     status: "queued",
     error: undefined,
     queuedAt: new Date().toISOString(),
   });
-  const event = await memoryDb.addEvent(jobId, {
+  const event = await db.addEvent(jobId, {
     status: "queued",
     message: "Job re-queued",
   });
   publishJobEvent(event);
-  setTimeout(() => {
-    void runRecipeJob(jobId);
-  }, 0);
+  if (!isUsingPostgres()) {
+    setTimeout(() => {
+      void runRecipeJob(jobId);
+    }, 0);
+  }
   return updated;
 }

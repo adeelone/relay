@@ -1,5 +1,5 @@
 import type { JobRecord } from "@/lib/jobs/types";
-import { memoryDb } from "@/lib/db/memory";
+import { db } from "@/lib/db";
 import { logEvent } from "@/lib/logging/logger";
 import { deliverWebhook } from "./webhook";
 
@@ -10,7 +10,7 @@ function sleep(ms: number) {
 export async function deliverJobResult(job: JobRecord) {
   const deliveries: Array<{ target: string; status: string }> = [];
   if (job.delivery.inApp !== false) {
-    await memoryDb.addDelivery({
+    await db.addDelivery({
       jobId: job.id,
       target: "in-app",
       status: "unread",
@@ -35,7 +35,7 @@ export async function deliverJobResult(job: JobRecord) {
       });
       responseStatus = result.status;
       status = result.ok ? "delivered" : `failed:${result.status}`;
-      await memoryDb.addDelivery({
+      await db.addDelivery({
         jobId: job.id,
         target: "webhook",
         status,
@@ -58,7 +58,7 @@ export async function deliverJobResult(job: JobRecord) {
     const status = process.env.EMAIL_PROVIDER_KEY
       ? "queued"
       : "feature-flag-disabled";
-    await memoryDb.addDelivery({
+    await db.addDelivery({
       jobId: job.id,
       target: "email",
       status,

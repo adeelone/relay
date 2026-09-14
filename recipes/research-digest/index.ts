@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { getSearchProvider } from "@/lib/search";
 import type { Recipe } from "../types";
-import { estimateRecipeCost, generateStructured } from "../helpers";
+import { estimateRecipeCost, runStructuredRecipe } from "../helpers";
 
 const inputSchema = z.object({
   topic: z.string().min(3),
@@ -40,17 +40,11 @@ export const researchDigestRecipe: Recipe<
       message: "Search sources gathered",
       chunk: `${sources.length} citations collected.\n`,
     });
-    const result = await generateStructured<z.infer<typeof outputSchema>>(
-      [
-        {
-          role: "system",
-          content:
-            "Return JSON with brief and questions. Preserve citation URLs from the supplied sources.",
-        },
-        { role: "user", content: JSON.stringify({ input, sources }) },
-      ],
+    return runStructuredRecipe(
+      "Return JSON with brief and questions. Preserve citation URLs from the supplied sources.",
+      { input, sources },
+      outputSchema,
       ctx,
     );
-    return outputSchema.parse(result.data);
   },
 };

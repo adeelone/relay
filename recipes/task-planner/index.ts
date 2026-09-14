@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { Recipe } from "../types";
-import { estimateRecipeCost, generateStructured } from "../helpers";
+import { estimateRecipeCost, runStructuredRecipe } from "../helpers";
 
 const inputSchema = z.object({
   task: z.string().min(10),
@@ -33,17 +33,11 @@ export const taskPlannerRecipe: Recipe<
   estimateCost: estimateRecipeCost,
   supportsStreaming: true,
   async run(input, ctx) {
-    const result = await generateStructured<z.infer<typeof outputSchema>>(
-      [
-        {
-          role: "system",
-          content:
-            "Return JSON with summary, items, and nextSteps for a pragmatic task plan.",
-        },
-        { role: "user", content: JSON.stringify(input) },
-      ],
+    return runStructuredRecipe(
+      "Return JSON with summary, items, and nextSteps for a pragmatic task plan.",
+      input,
+      outputSchema,
       ctx,
     );
-    return outputSchema.parse(result.data);
   },
 };

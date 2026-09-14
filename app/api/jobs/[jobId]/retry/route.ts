@@ -6,10 +6,11 @@ export const dynamic = "force-dynamic";
 
 export async function POST(
   request: Request,
-  { params }: { params: { jobId: string } },
+  { params }: { params: Promise<{ jobId: string }> },
 ) {
-  const caller = getCallerFromRequest(request);
-  const job = await retryJob(params.jobId, caller);
+  const { jobId } = await params;
+  const caller = await getCallerFromRequest(request);
+  const job = await retryJob(jobId, caller);
   if (!job)
     return NextResponse.json({ error: "not_retryable" }, { status: 409 });
   return NextResponse.json({ jobId: job.id, status: job.status });
