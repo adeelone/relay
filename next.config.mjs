@@ -1,10 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: "standalone",
   staticPageGenerationTimeout: 10,
+  serverExternalPackages: ["pg"],
   experimental: {
     cpus: 4,
-    serverComponentsExternalPackages: ["pg"],
   },
   async headers() {
     return [

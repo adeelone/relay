@@ -8,10 +8,16 @@ Long-running LLM work should not block a request handler. Relay uses three layer
 
 ## Stack
 
-- Next.js 14 App Router with TypeScript strict for API routes and dashboard UI.
-- Render blueprint and workflow registration boundary; a fake in-process worker runs locally.
-- Render Postgres schema in `migrations/001_initial.sql`; the local adapter is still in-memory.
-- Server-Sent Events backed locally by an event bus; Postgres `LISTEN/NOTIFY` or Redis is still production follow-up work.
+- Next.js 16 App Router (React 19) with TypeScript strict for API routes and dashboard UI.
+- Render blueprint with a real, independent worker: `npm run worker` polls Postgres for
+  queued/retrying jobs (`SELECT ... FOR UPDATE SKIP LOCKED`) when `DATABASE_URL` is set and
+  reachable. Without a reachable Postgres instance, the web process executes jobs inline
+  instead, since a separate process can't see another process's in-memory store.
+- Postgres schema in `migrations/*.sql`, applied in order and tracked in `schema_migrations`.
+  Falls back to an in-memory repository automatically if `DATABASE_URL` is unset or the
+  database is unreachable — the app never hard-fails on a missing database.
+- Server-Sent Events backed by Redis pub/sub when `REDIS_URL` is set and reachable, falling
+  back to a local in-process event bus otherwise (same resilient pattern as the database).
 - Groq is the default LLM provider. OpenAI, Anthropic, and mock providers share the same interface.
 - Zod validates every recipe input and output.
 
@@ -23,7 +29,10 @@ npm run dev
 npm run worker
 ```
 
-Open `http://localhost:3000`. Local API submissions enqueue work in process so the fake worker can stand in for Render Workflows without cloud infrastructure.
+Open `http://localhost:3000`. Without `DATABASE_URL` configured, the web process executes
+jobs inline and `npm run worker` is a no-op (nothing to poll). With a reachable Postgres
+instance, the worker is a real, separate process — job execution genuinely happens outside
+the request handler, matching the architecture this project describes.
 
 ## Environment
 
@@ -43,22 +52,29 @@ Copy `.env.example` to `.env.local` and set:
 ## Assumptions
 
 - Local development may use the mock LLM/search providers when API keys are unset.
-- The Postgres schema is complete, but this first implementation uses the in-memory repository for local demos and tests.
+- Postgres and Redis are both optional at runtime: unset or unreachable, the app falls back
+  to in-memory storage and a local event bus respectively, logging a warning either way.
 - Render preview environments can provision separate web, worker, and database services when enabled in Render.
 - Email delivery is feature-flagged until a provider key is present.
+- `POST /api/keys` issues a real key persisted (hashed) to the `api_keys` table; a recognized
+  bearer token resolves to its issued id and role via `getCallerFromRequest`. An unrecognized
+  bearer token still works exactly as before — scoped by the hash of whatever was sent — so
+  existing callers aren't broken by this; they just don't get a role or a stable issued-key id.
 
 ## Scripts
 
 - `npm run dev`: Next.js dashboard and API.
-- `npm run worker`: local fake worker registration.
-- `npm run test`: Vitest unit and integration tests.
+- `npm run worker`: independent job worker — polls Postgres when reachable, otherwise a no-op
+  (the web process runs jobs inline in that case).
+- `npm run test`: Vitest unit and integration tests (Node environment; no component tests exist).
 - `npm run test:e2e`: Playwright dashboard path.
 - `npm run build`: production build.
-- `npm run migrate`: apply SQL migrations to `DATABASE_URL`.
+- `npm run migrate`: apply all `migrations/*.sql` files in order, tracked in `schema_migrations`.
 
 ## Next Steps
 
-- Replace the in-memory repository with the Postgres query adapter for production.
+- Dashboard UI for API key management (issue/list/revoke) — the API and persistence exist;
+  the "API Keys" nav item is still a placeholder.
 - Add chained recipes.
 - Add scheduled recurring jobs.
 - Add a CLI client.

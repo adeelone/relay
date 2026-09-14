@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { Recipe } from "../types";
-import { estimateRecipeCost, generateStructured } from "../helpers";
+import { estimateRecipeCost, runStructuredRecipe } from "../helpers";
 
 const inputSchema = z.object({
   notes: z.string().min(20),
@@ -37,17 +37,11 @@ export const meetingNotesRecipe: Recipe<
   estimateCost: estimateRecipeCost,
   supportsStreaming: false,
   async run(input, ctx) {
-    const result = await generateStructured<z.infer<typeof outputSchema>>(
-      [
-        {
-          role: "system",
-          content:
-            "Return JSON with decisions, actionItems, and openQuestions from meeting notes.",
-        },
-        { role: "user", content: JSON.stringify(input) },
-      ],
+    return runStructuredRecipe(
+      "Return JSON with decisions, actionItems, and openQuestions from meeting notes.",
+      input,
+      outputSchema,
       ctx,
     );
-    return outputSchema.parse(result.data);
   },
 };

@@ -1,3 +1,4 @@
+import { backendReady, db, isUsingPostgres } from "@/lib/db";
 import { memoryDb } from "@/lib/db/memory";
 import { recipes } from "@/recipes/registry";
 import type { JobStatus } from "@/lib/jobs/types";
@@ -33,9 +34,10 @@ export interface DashboardSnapshot {
 }
 
 export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
-  seedIfEmpty();
-  const { jobs } = await memoryDb.listJobs({ admin: true, pageSize: 8 });
-  const counts = await memoryDb.countsByStatus();
+  await backendReady();
+  if (!isUsingPostgres()) seedIfEmpty();
+  const { jobs } = await db.listJobs({ admin: true, pageSize: 8 });
+  const counts = await db.countsByStatus();
   return {
     recipes: recipes.map((recipe) => ({
       id: recipe.id,

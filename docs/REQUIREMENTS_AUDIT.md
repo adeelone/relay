@@ -1,5 +1,12 @@
 # Requirements Audit
 
+> **Superseded, 2026-09.** The FAIL items below for Postgres persistence, Redis realtime,
+> and per-key scoping are now implemented (see `lib/db/`, `lib/realtime/`,
+> `lib/jobs/service.ts`). The worker (`workflows/dev-worker.ts`) is now a real polling
+> process against Postgres rather than a log-and-exit stub. This table reflects the
+> project's state before that work and is kept for history — treat the README and
+> ARCHITECTURE.md as current, not this file's per-line PASS/PARTIAL/FAIL table.
+
 Source: `relay-codex-prompt.md`
 
 Test baseline: `npm ci`, `npm run typecheck`, `npm run lint`, `npm test`, `npm run build`, `npm run test:e2e`, `npm audit --omit=dev`.

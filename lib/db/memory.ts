@@ -7,23 +7,17 @@ import type {
   JobStatus,
   WebhookDeliveryRecord,
 } from "@/lib/jobs/types";
+import type { ApiKeyRecord } from "@/lib/auth/types";
+import type { JobListQuery, Repository } from "./types";
+
+export type { JobListQuery } from "./types";
 
 const jobs = new Map<string, JobRecord>();
 const events: JobEventRecord[] = [];
 const attempts: JobAttemptRecord[] = [];
 const deliveries: WebhookDeliveryRecord[] = [];
 const idempotency = new Map<string, { jobId: string; expiresAt: number }>();
-
-export interface JobListQuery {
-  apiKeyId?: string;
-  recipe?: string;
-  status?: JobStatus;
-  from?: string;
-  to?: string;
-  page?: number;
-  pageSize?: number;
-  admin?: boolean;
-}
+const apiKeys = new Map<string, ApiKeyRecord>();
 
 export const memoryDb = {
   async createJob(job: JobRecord) {
@@ -106,6 +100,15 @@ export const memoryDb = {
   async listAttempts(jobId: string) {
     return attempts.filter((attempt) => attempt.jobId === jobId);
   },
+  async claimNextJob() {
+    const candidate = Array.from(jobs.values())
+      .filter((job) => job.status === "queued" || job.status === "retrying")
+      .sort((a, b) => a.queuedAt.localeCompare(b.queuedAt))[0];
+    if (!candidate) return undefined;
+    const claimed = { ...candidate, status: "processing" as const };
+    jobs.set(claimed.id, claimed);
+    return claimed;
+  },
   async addDelivery(delivery: Omit<WebhookDeliveryRecord, "id" | "createdAt">) {
     const record: WebhookDeliveryRecord = {
       id: nanoid(),
@@ -178,7 +181,26 @@ export const memoryDb = {
       ),
     };
   },
+  async createApiKeyRecord(record: Omit<ApiKeyRecord, "id" | "createdAt">) {
+    const full: ApiKeyRecord = {
+      id: nanoid(),
+      createdAt: new Date().toISOString(),
+      ...record,
+    };
+    apiKeys.set(full.id, full);
+    return full;
+  },
+  async getApiKeyByHash(keyHash: string) {
+    return Array.from(apiKeys.values()).find(
+      (key) => key.keyHash === keyHash && !key.revokedAt,
+    );
+  },
+  async listApiKeys() {
+    return Array.from(apiKeys.values()).sort((a, b) =>
+      b.createdAt.localeCompare(a.createdAt),
+    );
+  },
   seed(job: JobRecord) {
     jobs.set(job.id, job);
   },
-};
+} satisfies Repository & { seed(job: JobRecord): void };

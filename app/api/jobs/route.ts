@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { memoryDb } from "@/lib/db/memory";
+import { db } from "@/lib/db";
 import { getCallerFromRequest } from "@/lib/auth/api-keys";
 import { createJob } from "@/lib/jobs/service";
 import { jobStatuses, toPublicJob, type JobStatus } from "@/lib/jobs/types";
@@ -40,7 +40,7 @@ export async function POST(request: Request) {
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
-  const caller = getCallerFromRequest(request);
+  const caller = await getCallerFromRequest(request);
   const recipeFilter = url.searchParams.get("recipe");
   const statusFilter = url.searchParams.get("status");
   const status = jobStatuses.includes(statusFilter as JobStatus)
@@ -48,7 +48,7 @@ export async function GET(request: Request) {
     : undefined;
   const page = parsePositiveInt(url.searchParams.get("page"), 1);
   const pageSize = parsePositiveInt(url.searchParams.get("pageSize"), 25);
-  const result = await memoryDb.listJobs({
+  const result = await db.listJobs({
     apiKeyId: caller.apiKeyHash,
     admin: !caller.apiKeyHash,
     recipe: recipeFilter ?? undefined,
